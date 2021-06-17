@@ -31,7 +31,7 @@ server = app.server
 
 cachedir = 'Data/'
 VERSION_NAME="full_compressed_sampled_307511"
-days_conversion = -0.0328767
+days_conversion = 1
 label_min_value = 48
 
 train_histo = pd.read_pickle(cachedir+"train_final_df_histogram"+VERSION_NAME+".pkl")
@@ -46,22 +46,23 @@ y_test = pd.read_pickle(cachedir+"test_label"+VERSION_NAME+".pkl")
 
 
 model = xgboost.XGBClassifier()
-model.load_model(cachedir+'modelxgboost3'+VERSION_NAME+'.json')
+model.load_model(cachedir+'modelxgboost1'+VERSION_NAME+'.json')
 #model = load(cachedir+"modelxgboost3"+VERSION_NAME)
 
 loan_selected_index = test.iloc[0,:].name
 test.loc["New_loan",:] = test.loc[loan_selected_index,:]
 
 
-list_features_selection = ['age','AMT_INCOME_TOTAL',
-                            'AMT_CREDIT','DAYS_EMPLOYED',
-                            'NEW_CREDIT_TO_GOODS_RATIO',
-                            'NEW_EXT_SOURCES_PROD','NEW_EXT_SOURCES_MEAN',
-                            'AMT_GOODS_PRICE',
-                            'AMT_ANNUITY']
+list_features_selection = ['NEW_EXT_SOURCES_MEAN',
+                            'AMT_ANNUITY','NEW_CREDIT_TO_GOODS_RATIO','AMT_CREDIT',
+                            'AMT_INCOME_TOTAL',
+                            'NEW_EMPLOY_TO_BIRTH-18_RATIO',
+                            'age','DAYS_EMPLOYED',
+                            'NEW_EXT_SOURCES_PROD',
+                            'AMT_GOODS_PRICE']
 
 train_histogram = pd.concat([train_histo,y_train],axis=1)[['TARGET']+list_features_selection].fillna(0)
-train_histogram['DAYS_EMPLOYED']=train_histogram['DAYS_EMPLOYED']*days_conversion
+train_histogram['NEW_EMPLOY_TO_BIRTH-18_RATIO']=train_histogram['NEW_EMPLOY_TO_BIRTH-18_RATIO']*days_conversion
 
 
 result_assessment_model = model.predict_proba(test.loc[[loan_selected_index,"New_loan",],])
@@ -112,15 +113,15 @@ ratio_value_input = dcc.Input(
                     )
 
 AMT_GOODS_PRICE_value_input =dcc.Input(
-                    id="AMT_GOODS_PRICE_input", type="number", placeholder="Good prices",
+                    id="AMT_GOODS_PRICE_input", type="number", placeholder="Amount annuity",
                     min=0,
-                    value=round(test.loc[loan_selected_index,'AMT_GOODS_PRICE'],3)
+                    value=round(test.loc[loan_selected_index,'AMT_ANNUITY'],3)
                     )
 
 DAYS_EMPLOYED_value_input =dcc.Input(
                     id="DAYS_EMPLOYED_input", type="number", placeholder="Days worked",
                     min=0,
-                    value= round(test.loc[loan_selected_index,'DAYS_EMPLOYED']*days_conversion,1)
+                    value= round(test.loc[loan_selected_index,'NEW_EMPLOY_TO_BIRTH-18_RATIO']*days_conversion,5)
                     )                   
 ################# FIGURES ############################
 Histogram = dcc.Graph(
@@ -138,7 +139,7 @@ Histogram = dcc.Graph(
 result_assessment = dcc.Graph(
     id='result_assessment',
     figure=results_assessment(min_value=label_min_value, 
-                            your_application_value = round(result_assessment_model[1,0],2)*100
+                            your_application_value = round(result_assessment_model[1,0]*100,2)
                             )
     )
 
@@ -175,7 +176,7 @@ app.layout = html.Div([
             
             
             html.Div([        
-                html.Label('Goods price',style={'fontsize':'6px'}),
+                html.Label('Amount annuity',style={'fontsize':'6px'}),
                 html.Br(),
                 AMT_GOODS_PRICE_value_input
                 ],
@@ -183,7 +184,7 @@ app.layout = html.Div([
                 ),
 
             html.Div([              
-                html.Label('Credit/annuity ratio',style={'fontsize':'6px'}),
+                html.Label('Credit/goods ratio',style={'fontsize':'6px'}),
                 html.Br(),
                 ratio_value_input
                 ],
@@ -208,7 +209,7 @@ app.layout = html.Div([
                     }
                 ),
             html.Div([              
-                html.Label('Months worked',style={'fontsize':'6px'}),
+                html.Label('Days worked / after 18y',style={'fontsize':'4px'}),
                 html.Br(),
                 DAYS_EMPLOYED_value_input
                 ],
@@ -252,14 +253,14 @@ app.layout = html.Div([
 
 ################### Update ratio graph
 @app.callback(
-    dash.dependencies.Output('histo_graph', 'figure'),
-    [dash.dependencies.Input('slider_revenu', 'value'),
-     dash.dependencies.Input('slider_age', 'value'),
-    dash.dependencies.Input('loans_selection', 'value'),
-    dash.dependencies.Input('features_histogram_selection','value'),
-    dash.dependencies.Input('ratio_input', 'value'),
-    dash.dependencies.Input('AMT_GOODS_PRICE_input', 'value'),
-    dash.dependencies.Input('DAYS_EMPLOYED_input', 'value')])
+    Output('histo_graph', 'figure'),
+    [Input('slider_revenu', 'value'),
+     Input('slider_age', 'value'),
+    Input('loans_selection', 'value'),
+    Input('features_histogram_selection','value'),
+    Input('ratio_input', 'value'),
+    Input('AMT_GOODS_PRICE_input', 'value'),
+    Input('DAYS_EMPLOYED_input', 'value')])
 
 def update_graph(revenu_value, age_value,loans_id,feature_selected,new_ratio_value,new_AMT_GOODS_PRICE,new_DAYS_EMPLOYED):
 
@@ -291,7 +292,7 @@ def update_graph(revenu_value, age_value,loans_id,feature_selected,new_ratio_val
                     name="New credit to annuity ratio"
         )
 
-    elif feature_selected=='DAYS_EMPLOYED':
+    elif feature_selected=='NEW_EMPLOY_TO_BIRTH-18_RATIO':
         
         fig = graph_histogram(df=train_histogram[train_histogram[feature_selected]<500],
                     loan_test_value = test.loc[loans_id,feature_selected]*days_conversion,
@@ -315,12 +316,12 @@ def update_graph(revenu_value, age_value,loans_id,feature_selected,new_ratio_val
         fig.update_layout(
             title_font_family="arial",
             title_font_color = "black",
-            title="Month Worked (Revenu : " + str(revenu_value[0]*10) + " - " + str(revenu_value[1]*10)+"k$ / age :" + str(age_value[0]) + " - " + str(age_value[1]) +")",
-            xaxis_title="Months Worked",
+            title="Ratio days worked / days after 18 years' (Revenu : " + str(revenu_value[0]*10) + " - " + str(revenu_value[1]*10)+"k$ / age :" + str(age_value[0]) + " - " + str(age_value[1]) +")",
+            xaxis_title="'Ratio days worked / days after 18 years'",
             )
     
 
-    elif feature_selected=='AMT_GOODS_PRICE':
+    elif feature_selected=='AMT_ANNUITY':
         fig.add_shape(type="line", yref="paper",
             x0=new_AMT_GOODS_PRICE, 
             y0=0, 
@@ -339,16 +340,16 @@ def update_graph(revenu_value, age_value,loans_id,feature_selected,new_ratio_val
 
 ################### UPDATE data
 @app.callback(
-    [dash.dependencies.Output('ratio_input', 'value'),
-    dash.dependencies.Output('AMT_GOODS_PRICE_input', 'value'), 
-    dash.dependencies.Output('DAYS_EMPLOYED_input', 'value'),
-    dash.dependencies.Output('button_update', 'value'),
-    dash.dependencies.Output('button_update', 'style')],
-    [dash.dependencies.Input('button_update', 'n_clicks'),
-    dash.dependencies.Input('loans_selection', 'value'),
-    dash.dependencies.Input('ratio_input', 'value'),
-    dash.dependencies.Input('AMT_GOODS_PRICE_input', 'value'),
-    dash.dependencies.Input('DAYS_EMPLOYED_input', 'value')])
+    [Output('ratio_input', 'value'),
+    Output('AMT_GOODS_PRICE_input', 'value'), 
+    Output('DAYS_EMPLOYED_input', 'value'),
+    Output('button_update', 'value'),
+    Output('button_update', 'style')],
+    [Input('button_update', 'n_clicks'),
+    Input('loans_selection', 'value'),
+    Input('ratio_input', 'value'),
+    Input('AMT_GOODS_PRICE_input', 'value'),
+    Input('DAYS_EMPLOYED_input', 'value')])
 
 def update_ratio_value(btn1, loan_id, new_ratio_value,new_AMT_GOODS_PRICE,new_DAYS_EMPLOYED):
 
@@ -357,8 +358,8 @@ def update_ratio_value(btn1, loan_id, new_ratio_value,new_AMT_GOODS_PRICE,new_DA
     if not ctx.triggered:
         New_button_value = 'Original values'
         style=normal_button_style
-        new_AMT_GOODS_PRICE = round(test.loc[loan_id,'AMT_GOODS_PRICE'],3)
-        new_DAYS_EMPLOYED = round(test.loc[loan_id,'DAYS_EMPLOYED']*days_conversion,1)
+        new_AMT_GOODS_PRICE = round(test.loc[loan_id,'AMT_ANNUITY'],3)
+        new_DAYS_EMPLOYED = round(test.loc[loan_id,'NEW_EMPLOY_TO_BIRTH-18_RATIO']*days_conversion,5)
         new_ratio = round(test.loc[loan_id,'NEW_CREDIT_TO_GOODS_RATIO'],3)
     else:    
         last_change = ctx.triggered[0]['prop_id'].split('.')[0]
@@ -366,13 +367,13 @@ def update_ratio_value(btn1, loan_id, new_ratio_value,new_AMT_GOODS_PRICE,new_DA
         style=normal_button_style
         if last_change=='loans_selection' or last_change=='button_update' and btn1>0:
             new_ratio = round(test.loc[loan_id,'NEW_CREDIT_TO_GOODS_RATIO'],3)
-            new_AMT_GOODS_PRICE = round(test.loc[loan_id,'AMT_GOODS_PRICE'],3)
-            new_DAYS_EMPLOYED = round(test.loc[loan_id,'DAYS_EMPLOYED']*days_conversion,1)
+            new_AMT_GOODS_PRICE = round(test.loc[loan_id,'AMT_ANNUITY'],3)
+            new_DAYS_EMPLOYED = round(test.loc[loan_id,'NEW_EMPLOY_TO_BIRTH-18_RATIO']*days_conversion,5)
             New_button_value = 'Original values'
             style=normal_button_style
 
-        elif new_DAYS_EMPLOYED != round(test.loc[loan_id,'DAYS_EMPLOYED']*days_conversion,1) \
-        or new_AMT_GOODS_PRICE != round(test.loc[loan_id,'AMT_GOODS_PRICE'],3) \
+        elif new_DAYS_EMPLOYED != round(test.loc[loan_id,'NEW_EMPLOY_TO_BIRTH-18_RATIO']*days_conversion,1) \
+        or new_AMT_GOODS_PRICE != round(test.loc[loan_id,'AMT_ANNUITY'],3) \
         or new_ratio_value != round(test.loc[loan_id,'NEW_CREDIT_TO_GOODS_RATIO'],3):
             
             New_button_value = 'UPDATED values'
@@ -382,8 +383,8 @@ def update_ratio_value(btn1, loan_id, new_ratio_value,new_AMT_GOODS_PRICE,new_DA
             style = red_button_style
         else:
             new_ratio = round(test.loc[loan_id,'NEW_CREDIT_TO_GOODS_RATIO'],3)
-            new_AMT_GOODS_PRICE = round(test.loc[loan_id,'AMT_GOODS_PRICE'],3)
-            new_DAYS_EMPLOYED = round(test.loc[loan_id,'DAYS_EMPLOYED']*days_conversion,1)
+            new_AMT_GOODS_PRICE = round(test.loc[loan_id,'AMT_ANNUITY'],3)
+            new_DAYS_EMPLOYED = round(test.loc[loan_id,'NEW_EMPLOY_TO_BIRTH-18_RATIO']*days_conversion,5)
             New_button_value = 'Original values'
             style=normal_button_style
     
@@ -392,20 +393,20 @@ def update_ratio_value(btn1, loan_id, new_ratio_value,new_AMT_GOODS_PRICE,new_DA
 
 ################### Update Result Assesment
 @app.callback(
-    dash.dependencies.Output('result_assessment', 'figure'),
-    dash.dependencies.Output('text_assement', component_property='children'),
-    [dash.dependencies.Input('loans_selection', 'value'),
-    dash.dependencies.Input('ratio_input', 'value'),
-    dash.dependencies.Input('AMT_GOODS_PRICE_input', 'value'),
-    dash.dependencies.Input('DAYS_EMPLOYED_input', 'value')])
+    Output('result_assessment', 'figure'),
+    Output('text_assement', component_property='children'),
+    [Input('loans_selection', 'value'),
+    Input('ratio_input', 'value'),
+    Input('AMT_GOODS_PRICE_input', 'value'),
+    Input('DAYS_EMPLOYED_input', 'value')])
 
 def update_graph(loans_id,new_ratio_value,new_AMT_GOODS_PRICE,new_DAYS_EMPLOYED):
 
     test.loc["New_loan",:] = test.loc[loans_id,:]
     test.loc["New_loan",'NEW_CREDIT_TO_GOODS_RATIO']=new_ratio_value
-    test.loc["New_loan",'AMT_GOODS_PRICE']=new_AMT_GOODS_PRICE
-    test.loc["New_loan",'DAYS_EMPLOYED']=new_DAYS_EMPLOYED/days_conversion
-    result_assessment_model_updated = round(model.predict_proba(test.loc[[loans_id,"New_loan"],:])[1,0]*100,0)
+    test.loc["New_loan",'AMT_ANNUITY']=new_AMT_GOODS_PRICE
+    test.loc["New_loan",'NEW_EMPLOY_TO_BIRTH-18_RATIO']=new_DAYS_EMPLOYED/days_conversion
+    result_assessment_model_updated = round(model.predict_proba(test.loc[[loans_id,"New_loan"],:])[1,0]*100,2)
 
 
                       
