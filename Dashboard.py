@@ -343,7 +343,9 @@ def update_graph(revenu_value, age_value,loans_id,feature_selected,new_ratio_val
     dash.dependencies.Output('AMT_GOODS_PRICE_input', 'value'), 
     dash.dependencies.Output('DAYS_EMPLOYED_input', 'value'),
     dash.dependencies.Output('button_update', 'value'),
-    dash.dependencies.Output('button_update', 'style')],
+    dash.dependencies.Output('button_update', 'style'),
+    dash.dependencies.Output('result_assessment', 'figure'),
+    dash.dependencies.Output('text_assement', component_property='children')],
     [dash.dependencies.Input('button_update', 'n_clicks'),
     dash.dependencies.Input('loans_selection', 'value'),
     dash.dependencies.Input('ratio_input', 'value'),
@@ -353,7 +355,8 @@ def update_graph(revenu_value, age_value,loans_id,feature_selected,new_ratio_val
 def update_ratio_value(btn1, loan_id, new_ratio_value,new_AMT_GOODS_PRICE,new_DAYS_EMPLOYED):
 
     ctx = dash.callback_context
-   
+    result_assessment_model_updated = round(model.predict_proba(test.loc[[loan_id,"New_loan"],:])[0,0]*100,0)
+    
     if not ctx.triggered:
         New_button_value = 'Original values'
         style=normal_button_style
@@ -380,32 +383,21 @@ def update_ratio_value(btn1, loan_id, new_ratio_value,new_AMT_GOODS_PRICE,new_DA
             new_AMT_GOODS_PRICE = new_AMT_GOODS_PRICE
             new_DAYS_EMPLOYED = new_DAYS_EMPLOYED
             style = red_button_style
+
+            test.loc["New_loan",:] = test.loc[loan_id,:]
+            test.loc["New_loan",'NEW_CREDIT_TO_GOODS_RATIO']=new_ratio_value
+            test.loc["New_loan",'AMT_GOODS_PRICE']=new_AMT_GOODS_PRICE
+            test.loc["New_loan",'DAYS_EMPLOYED']=new_DAYS_EMPLOYED/days_conversion
+            result_assessment_model_updated = round(model.predict_proba(test.loc[[loan_id,"New_loan"],:])[1,0]*100,0)
+
         else:
             new_ratio = round(test.loc[loan_id,'NEW_CREDIT_TO_GOODS_RATIO'],3)
             new_AMT_GOODS_PRICE = round(test.loc[loan_id,'AMT_GOODS_PRICE'],3)
             new_DAYS_EMPLOYED = round(test.loc[loan_id,'DAYS_EMPLOYED']*days_conversion,1)
             New_button_value = 'Original values'
             style=normal_button_style
+
     
-    return new_ratio,new_AMT_GOODS_PRICE, new_DAYS_EMPLOYED, New_button_value,style
-#########################################
-
-################### Update Result Assesment
-@app.callback(
-    dash.dependencies.Output('result_assessment', 'figure'),
-    dash.dependencies.Output('text_assement', component_property='children'),
-    [dash.dependencies.Input('loans_selection', 'value'),
-    dash.dependencies.Input('ratio_input', 'value'),
-    dash.dependencies.Input('AMT_GOODS_PRICE_input', 'value'),
-    dash.dependencies.Input('DAYS_EMPLOYED_input', 'value')])
-
-def update_graph(loans_id,new_ratio_value,new_AMT_GOODS_PRICE,new_DAYS_EMPLOYED):
-
-    test.loc["New_loan",:] = test.loc[loans_id,:]
-    test.loc["New_loan",'NEW_CREDIT_TO_GOODS_RATIO']=new_ratio_value
-    test.loc["New_loan",'AMT_GOODS_PRICE']=new_AMT_GOODS_PRICE
-    test.loc["New_loan",'DAYS_EMPLOYED']=new_DAYS_EMPLOYED/days_conversion
-    result_assessment_model_updated = round(model.predict_proba(test.loc[[loans_id,"New_loan"],:])[1,0]*100,0)
 
 
                       
@@ -414,24 +406,23 @@ def update_graph(loans_id,new_ratio_value,new_AMT_GOODS_PRICE,new_DAYS_EMPLOYED)
         title ="Your loans will be accepted. \
                 \n Your result is " + str(result_assessment_model_updated) + "% \
                 \n (above the minimum value " + str(label_min_value) + "%)"
-        fig = results_assessment(min_value=label_min_value, 
-                            your_application_value = result_assessment_model_updated
-                            )
+    
     else:
         title = "Your loans will NOT be accepted. \
                 \n Your result is " + str(result_assessment_model_updated) + "% \
                 \n (under the minimum value " + str(label_min_value) + "%)"
-        fig = results_assessment(min_value=label_min_value, 
+    
+    fig = results_assessment(min_value=label_min_value, 
                             your_application_value = result_assessment_model_updated
                             )
                     
-     
-   
-    return fig,title
+    
+    return new_ratio,new_AMT_GOODS_PRICE, new_DAYS_EMPLOYED, New_button_value,style,fig,title
+#########################################
 
 
 
 #########################################
 
 if __name__ == '__main__':
-    app.run_server(debug=False)
+    app.run_server(debug=True)
